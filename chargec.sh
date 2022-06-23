@@ -1,3 +1,4 @@
+#10 6 * * * https://github.com/glenq/autotask/zhonggeng.js, tag=充电, enabled=true
 capacity=`cat /sys/class/power_supply/battery/capacity`
 if [ $capacity -ge 95 ]
 then 
