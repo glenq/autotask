@@ -10,32 +10,45 @@ const $ = new Env('打卡签到');
 
 const jsname = '打卡签到'
 const logDebug = 0
-
+https://github.com/glenq/autotask
 const notifyFlag = 1; //0为关闭通知，1为打开通知,默认为1
 const notify = $.isNode() ? require('./sendNotify') : '';
 let notifyStr = ''
-let userReferer = 'https://servicewechat.com/wxed71c892d2eaf640/14/page-frame.html'
-let userHost = 'zhonggeng.cjtzn.com'
+let userReferer = 'https://tuhu.peoplus.cn'
+let userHost = 'tuhu.peoplus.cn'
 let httpResult //global buffer
 
-let userCookie = ($.isNode() ? process.env.zhonggengCookie : $.getdata('zhonggengCookie')) || '';
-let userUA = 'Mozilla/5.0 (Linux; Android 7.1.2; MI 6X Build/N6F26Q; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/86.0.4240.99 XWEB/3225 MMWEBSDK/20211001 Mobile Safari/537.36 MMWEBID/3453 MicroMessenger/8.0.16.2040(0x2800103B) Process/appbrand0 WeChat/arm64 Weixin NetType/WIFI Language/zh_CN ABI/arm64 MiniProgramEnv/android';
+let userCookie = ($.isNode() ? process.env.tuhuSession : $.getdata('tuhuSession')) || '';
+let userUA = 'Mozilla/5.0 (Linux; Android 9; MI 6X Build/PKQ1.180904.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/77.0.3865.120 MQQBrowser/6.2 TBS/045737 Mobile Safari/537.36 wxwork/3.1.20 ColorScheme/Light MicroMessenger/7.0.1 NetType/WIFI Language/zh Lang/zh';
 
+let singDate = new Date()
+singDate =
+    singDate.getFullYear() +
+    '-' +
+    ((singDate.getMonth() + 1).toString().length == 1
+        ? '0' + (singDate.getMonth() + 1)
+        : singDate.getMonth() + 1) +
+    '-' +
+    (singDate.getDate().toString().length == 1
+        ? '0' + singDate.getDate()
+        : singDate.getDate());
+console.log(singDate)	
 
 !(async () => {
     if(userCookie) {
-        for(let userid of userCookie.split('@')) {
-            if(userid){
-                await doSign(userid);
+        for(let sessionid of userCookie.split('@')) {
+            if(sessionid){
+		await doReport(sessionid);
+                await doSign(sessionid);
                 console.log(`\n【访问接口，休息1秒.....】\n`);
-		        await $.wait(1000);
+		await $.wait(1000);
             }
         }
         if ($.isNode() && notifyStr) {
             await notify.sendNotify(`${$.name}`, `${notifyStr}`)
         }
     } else {
-        console.log('未找到zhonggengCookie')
+        console.log('未找到tuhuSession')
     }
 })()
     .catch((e) => {
@@ -45,20 +58,20 @@ let userUA = 'Mozilla/5.0 (Linux; Android 7.1.2; MI 6X Build/N6F26Q; wv) AppleWe
         $.done();
     })
 
-async function doSign(userid) {
+async function doSign(sessionid) {
     try {
-        let url = `https://zhonggeng.cjtzn.com/user/sign/check_sign`
-        let body = `{"userId":"${userid}"}`
+        let url = `https://tuhu.peoplus.cn/mjson/hr.attendance/stateless_auto_sign_in`
+        let body = `{"identication":{"linkid":"","app_channel":"wx","session_id":${sessionid},"language":"zh_CN","version":"2.4.0","type":"session","info":{"systemVersion":"9.1","systemModel":"PC"}},"data":{"cur_latitude":31.135948405427516,"cur_longitude":121.40191588248116,"beaconArray":[],"gps_attendance_id":22261,"gps_address":"上海市闵行区万源路18号-1","context":{"submit_times":0}}}`
         let urlObject = populateUrlObject(url, body)
         await httpRequest('post', urlObject)
         let result = httpResult;
         if(!result) return
-        if (result.resCode == 10024){
-            let msg = `中庚签到成功，结果：${JSON.stringify(result)}\n`
+        if (result.code === 0){
+            let msg = `途虎签到成功，结果：${JSON.stringify(result)}\n`
             notifyStr += msg
             console.log(msg)
         }else {
-            let msg = `中庚签到失败，错误数据：${JSON.stringify(result)}\n`
+            let msg = `途虎签到失败，错误数据：${JSON.stringify(result)}\n`
             notifyStr += msg
             console.log(msg)
         }
@@ -67,7 +80,30 @@ async function doSign(userid) {
     }
 }
 
-function populateUrlObject(url,body=''){
+async function doReport(sessionid){
+      try {
+      
+        let url = `https://tuhu.peoplus.cn/mjson/hr.attendance/app_day_time_report`
+        let body = `{"identication":{"linkid":"","app_channel":"wx","session_id":${sessionid},"language":"zh_CN","version":"2.4.0","type":"session","info":{"systemVersion":"9.1","systemModel":"PC"}},"data":{"date":${singDate}}}`
+        let urlObject = populateUrlObject(url, body)
+        await httpRequest('post', urlObject)
+        let result = httpResult;
+        if(!result) return
+        if (result.code === 0){
+            let msg = `途虎日报，结果：${JSON.stringify(result)}\n`
+            notifyStr += msg
+            console.log(msg)
+        }else {
+            let msg = `途虎日报，错误数据：${JSON.stringify(result)}\n`
+            notifyStr += msg
+            console.log(msg)
+        }
+    } catch (e) {
+        $.logErr(e)
+    }
+}
+
+function populateUrlObject(url,sessionid,body=''){
     let urlObject = {
         url: url,
         headers: {
@@ -76,7 +112,8 @@ function populateUrlObject(url,body=''){
             'Accept' : 'application/json, text/plain, */*',
             'Accept-Encoding' : 'gzip,compress,br,deflate',
             'User-Agent' : userUA,
-            'Referer':userReferer
+            'Referer':userReferer,
+	    'Cookie': 'session_id=${sessionid}; website_lang=zh_CN'
         },
     }
     if(body) urlObject.body = body
