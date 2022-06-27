@@ -10,8 +10,7 @@ const $ = new Env('打卡签到');
 
 const jsname = '打卡签到'
 const logDebug = 0
-https://github.com/glenq/autotask
-const notifyFlag = 1; //0为关闭通知，1为打开通知,默认为1
+
 const notify = $.isNode() ? require('./sendNotify') : '';
 let notifyStr = ''
 let userReferer = 'https://tuhu.peoplus.cn'
@@ -20,7 +19,7 @@ let httpResult //global buffer
 
 let userCookie = ($.isNode() ? process.env.tuhuSession : $.getdata('tuhuSession')) || '';
 let userUA = 'Mozilla/5.0 (Linux; Android 9; MI 6X Build/PKQ1.180904.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/77.0.3865.120 MQQBrowser/6.2 TBS/045737 Mobile Safari/537.36 wxwork/3.1.20 ColorScheme/Light MicroMessenger/7.0.1 NetType/WIFI Language/zh Lang/zh';
-
+let daytype = 1
 let singDate = new Date()
 singDate =
     singDate.getFullYear() +
@@ -39,8 +38,14 @@ console.log(singDate)
         for(let sessionid of userCookie.split('@')) {
             if(sessionid){
 		await doReport(sessionid);
-                await doSign(sessionid);
-                console.log(`\n【访问接口，休息1秒.....】\n`);
+        await isWorkingDay();
+        console.log(daytype);
+        if(daytype === 0){
+            await doSign(sessionid);
+        }else{
+            console.log('非工作日，检查一次');
+            notifyStr += '非工作日，检查一次'
+        }
 		await $.wait(1000);
             }
         }
@@ -61,8 +66,8 @@ console.log(singDate)
 async function doSign(sessionid) {
     try {
         let url = `https://tuhu.peoplus.cn/mjson/hr.attendance/stateless_auto_sign_in`
-        let body = `{"identication":{"linkid":"","app_channel":"wx","session_id":${sessionid},"language":"zh_CN","version":"2.4.0","type":"session","info":{"systemVersion":"9.1","systemModel":"PC"}},"data":{"cur_latitude":31.135948405427516,"cur_longitude":121.40191588248116,"beaconArray":[],"gps_attendance_id":22261,"gps_address":"上海市闵行区万源路18号-1","context":{"submit_times":0}}}`
-        let urlObject = populateUrlObject(url, body)
+        let body = `{"identication":{"linkid":"","app_channel":"wx","session_id":"${sessionid}","language":"zh_CN","version":"2.4.0","type":"session","info":{"systemVersion":"9.1","systemModel":"PC"}},"data":{"cur_latitude":31.135948405427516,"cur_longitude":121.40191588248116,"beaconArray":[],"gps_attendance_id":22261,"gps_address":"上海市闵行区万源路18号-1","context":{"submit_times":0}}}`
+        let urlObject = populateUrlObject(url,sessionid, body)
         await httpRequest('post', urlObject)
         let result = httpResult;
         if(!result) return
@@ -84,14 +89,13 @@ async function doReport(sessionid){
       try {
       
         let url = `https://tuhu.peoplus.cn/mjson/hr.attendance/app_day_time_report`
-        let body = `{"identication":{"linkid":"","app_channel":"wx","session_id":${sessionid},"language":"zh_CN","version":"2.4.0","type":"session","info":{"systemVersion":"9.1","systemModel":"PC"}},"data":{"date":${singDate}}}`
-        let urlObject = populateUrlObject(url, body)
+        let body = `{"identication":{"linkid":"","app_channel":"wx","session_id":"${sessionid}","language":"zh_CN","version":"2.4.0","type":"session","info":{"systemVersion":"9.1","systemModel":"PC"}},"data":{"date":"${singDate}"}}`
+        let urlObject = populateUrlObject(url,sessionid, body)
         await httpRequest('post', urlObject)
         let result = httpResult;
         if(!result) return
         if (result.code === 0){
             let msg = `途虎日报，结果：${JSON.stringify(result)}\n`
-            notifyStr += msg
             console.log(msg)
         }else {
             let msg = `途虎日报，错误数据：${JSON.stringify(result)}\n`
@@ -101,6 +105,41 @@ async function doReport(sessionid){
     } catch (e) {
         $.logErr(e)
     }
+}
+
+async function isWorkingDay(){
+  let workurl = `http://timor.tech/api/holiday/info/${singDate}`
+  try{
+let urlObject = workUrl(workurl)
+await httpRequest('get', urlObject)
+ let result = httpResult;
+        if(!result) return
+          if (result.code === 0){
+            let msg = `工作日查询，结果：${JSON.stringify(result)}\n`;
+            daytype = result.type.type;
+            console.log(msg)
+        }else {
+            let msg = `工作日查询，错误数据：${JSON.stringify(result)}\n`
+            
+            console.log(msg)
+        }
+  } catch (e) {
+        $.logErr(e)
+   }
+}
+
+function workUrl(url){
+    let urlObject = {
+        url: url,
+        headers: {
+            'Host': 'timor.tech',
+            'Connection': 'Keep-Alive',
+            'Accept' : 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+            'Accept-Encoding' : 'gzip,compress,br,deflate',
+            'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36',
+        },
+    }
+    return urlObject;
 }
 
 function populateUrlObject(url,sessionid,body=''){
@@ -113,7 +152,8 @@ function populateUrlObject(url,sessionid,body=''){
             'Accept-Encoding' : 'gzip,compress,br,deflate',
             'User-Agent' : userUA,
             'Referer':userReferer,
-	    'Cookie': 'session_id=${sessionid}; website_lang=zh_CN'
+            'Origin':userReferer,
+	        'Cookie': `session_id=${sessionid}; website_lang=zh_CN`
         },
     }
     if(body) urlObject.body = body
@@ -123,9 +163,10 @@ function populateUrlObject(url,sessionid,body=''){
 async function httpRequest(method,url) {
     httpResult = null
     if(method == 'post') {
-        url.headers['Content-Type'] =  'application/json'
+        url.headers['Content-Type'] =  'application/json;charset=UTF-8'
         url.headers['Content-Length'] = url.body ? url.body.length : 0
     }
+    
     return new Promise((resolve) => {
         $[method](url, async (err, resp, data) => {
             try {
